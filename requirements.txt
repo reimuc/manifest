@@ -1,0 +1,23 @@
+# 异步网络请求库
+aiohttp[speedups]
+
+# VDF文件解析库
+vdf
+
+# 强大的日志库
+loguru
+
+# 终端美化与富文本
+rich
+
+# 高性能JSON解析
+orjson
+
+# 高级重试机制
+tenacity
+
+# 缓存工具库
+cachetools
+
+# 异步文件操作
+aiofiles
