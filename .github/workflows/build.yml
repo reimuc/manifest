@@ -34,7 +34,7 @@ jobs:
           pyinstaller -F -i main.ico main.py
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.os }}
           path: dist/*
