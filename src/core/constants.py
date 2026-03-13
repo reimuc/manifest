@@ -1,11 +1,12 @@
 """常量配置模块"""
 
-from typing import Final
+from typing import Final, List, Dict
 
 # 版本信息
 VERSION: Final[str] = "4.0.0"
 
 # 网络配置 - 异步优化
+DNS_SERVERS: Final[List[str]] = ["223.5.5.5"]
 TIMEOUT: Final[int] = 30
 RETRY_TIMES: Final[int] = 5  # 减少重试次数，使用指数退避
 RETRY_INTERVAL: Final[float] = 1.0  # 基础重试间隔（秒）
@@ -21,7 +22,7 @@ CACHE_MAX_SIZE: Final[int] = 500  # API响应缓存数量
 CACHE_TTL: Final[int] = 3600  # 缓存时间（秒）
 
 
-class URLs:
+class Urls:
     """URL常量管理"""
 
     GITHUB_API: Final[str] = "https://api.github.com"
@@ -36,32 +37,32 @@ class URLs:
     @staticmethod
     def github_branch(repo: str, branch: str) -> str:
         """获取GitHub分支URL"""
-        return f"{URLs.GITHUB_API}/repos/{repo}/branches/{branch}"
+        return f"{Urls.GITHUB_API}/repos/{repo}/branches/{branch}"
 
     @staticmethod
     def github_raw(repo: str, branch: str, path: str) -> str:
         """获取GitHub原始内容URL"""
-        return f"{URLs.GITHUB_RAW}/{repo}/{branch}/{path}"
+        return f"{Urls.GITHUB_RAW}/{repo}/{branch}/{path}"
 
     @staticmethod
     def steam_search(term: str) -> str:
         """获取Steam搜索URL"""
-        return f"{URLs.STEAM_SEARCH}/?cc=jp&l=zh&term={term}"
+        return f"{Urls.STEAM_SEARCH}/?cc=jp&l=zh&term={term}"
 
     @staticmethod
     def steam_app_details(appid: str) -> str:
         """获取Steam应用详情URL"""
-        return f"{URLs.STEAM_APP_DETAILS}?cc=jp&l=zh&appids={appid}"
+        return f"{Urls.STEAM_APP_DETAILS}?cc=jp&l=zh&appids={appid}"
 
 
 # HTTP请求头
-HTTP_HEADERS: Final[dict[str, str]] = {
+HTTP_HEADERS: Final[Dict[str, str]] = {
     "Accept": "application/json",
     "User-Agent": f"GitHubManifest/{VERSION}",
 }
 
 # 仓库配置
-DEFAULT_REPOS: Final[list[str]] = [
+DEFAULT_REPOS: Final[List[str]] = [
     "SteamAutoCracks/ManifestHub"
 ]
 

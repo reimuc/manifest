@@ -7,6 +7,11 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "06:00"
+      timezone: "Asia/Shanghai"
+    groups:
+      dependencies:
+        patterns:
+          - "*"
     open-pull-requests-limit: 10
     reviewers:
       - "reimuc"
@@ -19,15 +24,22 @@ updates:
       - "dependencies"
       - "python"
 
-  # GitHub Actions dependencies
+  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "tuesday"
       time: "06:00"
-    open-pull-requests-limit: 5
+      timezone: "Asia/Shanghai"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 10
     reviewers:
+      - "reimuc"
+    assignees:
       - "reimuc"
     commit-message:
       prefix: "⬆️ actions"

@@ -3,20 +3,20 @@
 import asyncio
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from loguru import logger
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 
-from api_client import APIClient
-from constant import DEFAULT_REPOS, Files, URLs
-from file_processor import FileProcessor
+from src.core.api_client import APIClient
+from src.core.constants import DEFAULT_REPOS, Files, Urls
+from src.services.file_service import FileService
 
 
-class RepositoryManager:
+class GitHubService:
     """GitHub仓库管理器"""
 
-    def __init__(self, api_client: APIClient, file_processor: FileProcessor):
+    def __init__(self, api_client: APIClient, file_processor: FileService):
         self.api_client = api_client
         self.file_processor = file_processor
         self.current_repo: Optional[str] = None
@@ -29,7 +29,7 @@ class RepositoryManager:
             是否可以继续请求
         """
         try:
-            result = await self.api_client.get(URLs.GITHUB_RATE_LIMIT)
+            result = await self.api_client.get(Urls.GITHUB_RATE_LIMIT)
 
             if not result or "rate" not in result:
                 logger.warning("❗ 无法获取API限制信息")
@@ -94,14 +94,14 @@ class RepositoryManager:
             logger.error(f"❌ 未在仓库中找到应用: {app_id}")
             return None
 
-    async def _check_repo_branch(self, repo: str, branch: str) -> tuple[bool, Optional[str]]:
+    async def _check_repo_branch(self, repo: str, branch: str) -> Tuple[bool, Optional[str]]:
         """检查仓库中是否存在分支并获取提交时间
 
         Returns:
             (has_branch, commit_date)
         """
         try:
-            url = URLs.github_branch(repo, branch)
+            url = Urls.github_branch(repo, branch)
             result = await self.api_client.get(url)
 
             if result and "commit" in result:
@@ -130,7 +130,7 @@ class RepositoryManager:
         """
         try:
             # 获取分支信息
-            branch_url = URLs.github_branch(repo, branch)
+            branch_url = Urls.github_branch(repo, branch)
             branch_data = await self.api_client.get(branch_url)
 
             if not branch_data or "commit" not in branch_data:
@@ -174,17 +174,18 @@ class RepositoryManager:
             是否全部成功处理
         """
         if semaphore is None:
-            from constant import MAX_WORKERS
+            # from src.core.config import MAX_WORKERS # Avoid circular import if possible, but constant is fine
+            from src.core.constants import MAX_WORKERS
             semaphore = asyncio.Semaphore(MAX_WORKERS)
 
         total_files = len(files)
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
         ) as progress:
             task = progress.add_task("[cyan]处理文件中...", total=total_files)
 
@@ -238,7 +239,7 @@ class RepositoryManager:
     async def _handle_manifest(self, repo: str, branch: str, path: str, steam_path: Path) -> bool:
         """处理清单文件"""
         try:
-            url = URLs.github_raw(repo, branch, path)
+            url = Urls.github_raw(repo, branch, path)
             content = await self.api_client.raw_get(url)
 
             if content:
@@ -252,17 +253,17 @@ class RepositoryManager:
     async def _handle_vdf(self, repo: str, branch: str, path: str) -> bool:
         """处理VDF文件"""
         try:
-            url = URLs.github_raw(repo, branch, path)
+            url = Urls.github_raw(repo, branch, path)
             content = await self.api_client.raw_get(url)
 
             if not content:
                 return False
 
             if path == Files.APPINFO_VDF:
-                app_name = await self.file_processor.parse_appinfo_vdf(content)
+                app_name = await self.file_processor.parse_app_info(content)
                 return app_name is not None
             elif path == Files.KEY_VDF:
-                return await self.file_processor.parse_key_vdf(content)
+                return await self.file_processor.parse_depot_key(content)
 
             return True
         except Exception as e:
@@ -272,7 +273,7 @@ class RepositoryManager:
     async def _handle_config(self, repo: str, branch: str, path: str) -> bool:
         """处理配置JSON文件"""
         try:
-            url = URLs.github_raw(repo, branch, path)
+            url = Urls.github_raw(repo, branch, path)
             config_data = await self.api_client.get(url)
 
             if config_data:

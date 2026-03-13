@@ -1,16 +1,16 @@
 """Steam应用信息管理模块"""
 
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
 
-from api_client import APIClient
-from constant import URLs
+from src.core.api_client import APIClient
+from src.core.constants import Urls
 
 
-class SteamAppManager:
+class SteamService:
     """Steam应用信息管理器"""
 
     def __init__(self, api_client: APIClient):
@@ -35,7 +35,7 @@ class SteamAppManager:
 
         # 搜索应用
         try:
-            search_url = URLs.steam_search(query)
+            search_url = Urls.steam_search(query)
             result = await self.api_client.get(search_url)
 
             if not result or "items" not in result:
@@ -97,7 +97,7 @@ class SteamAppManager:
             是否成功获取
         """
         try:
-            detail_url = URLs.steam_app_details(app_id)
+            detail_url = Urls.steam_app_details(app_id)
             result = await self.api_client.get(detail_url)
 
             if not result or not isinstance(result, dict):
@@ -125,7 +125,7 @@ class SteamAppManager:
             logger.error(f"❌ 获取应用详情失败: {str(e)}")
             return False
 
-    async def batch_fetch_dlc_details(self, dlc_ids: List[int]) -> dict:
+    async def batch_fetch_dlc_details(self, dlc_ids: List[int]) -> Dict[int, str]:
         """批量获取DLC详情
 
         Args:
@@ -138,7 +138,7 @@ class SteamAppManager:
             return {}
 
         # 构建多个DLC的URL
-        urls = [URLs.steam_app_details(str(dlc_id)) for dlc_id in dlc_ids]
+        urls = [Urls.steam_app_details(str(dlc_id)) for dlc_id in dlc_ids]
 
         # 批量获取
         results = await self.api_client.batch_get(urls)

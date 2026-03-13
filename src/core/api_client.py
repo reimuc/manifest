@@ -1,10 +1,11 @@
 """异步API客户端模块 - 高性能网络请求处理"""
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import aiohttp
 import orjson
+from aiohttp.resolver import AsyncResolver
 from cachetools import TTLCache
 from loguru import logger
 from tenacity import (
@@ -15,7 +16,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from constant import (
+from src.core.constants import (
     ASYNC_TIMEOUT,
     CACHE_MAX_SIZE,
     CACHE_TTL,
@@ -24,6 +25,7 @@ from constant import (
     HTTP_HEADERS,
     RETRY_TIMES,
     RETRY_INTERVAL,
+    MAX_WORKERS, DNS_SERVERS
 )
 
 
@@ -47,10 +49,13 @@ class APIClient:
 
     async def initialize(self):
         """初始化会话和连接池"""
+        resolver = AsyncResolver(nameservers=DNS_SERVERS)
+
         connector = aiohttp.TCPConnector(
             limit=CONNECTOR_LIMIT,
             limit_per_host=CONNECTOR_LIMIT_PER_HOST,
             ttl_dns_cache=300,
+            resolver=resolver,
         )
         timeout = aiohttp.ClientTimeout(total=ASYNC_TIMEOUT)
         self.session = aiohttp.ClientSession(
@@ -58,6 +63,7 @@ class APIClient:
             timeout=timeout,
             headers=HTTP_HEADERS,
             json_serialize=lambda x: orjson.dumps(x).decode(),
+            trust_env=True,  # 自动读取系统环境变量代理设置 (HTTP_PROXY, HTTPS_PROXY)
         )
         logger.debug("✨ 异步API客户端已初始化")
 
@@ -165,7 +171,7 @@ class APIClient:
             logger.error(f"❌ 下载异常: {str(e)}")
             return None
 
-    async def batch_get(self, urls: list[str], semaphore: Optional[asyncio.Semaphore] = None) -> Dict[
+    async def batch_get(self, urls: List[str], semaphore: Optional[asyncio.Semaphore] = None) -> Dict[
         str, Optional[Dict]]:
         """批量GET请求，支持并发控制
 
@@ -177,7 +183,6 @@ class APIClient:
             {url: response} 字典
         """
         if semaphore is None:
-            from constant import MAX_WORKERS
             semaphore = asyncio.Semaphore(MAX_WORKERS)
 
         async def fetch_with_semaphore(url):

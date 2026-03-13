@@ -8,17 +8,17 @@ import aiofiles
 import vdf
 from loguru import logger
 
-from constant import Steam
+from src.core.constants import Steam
 
 
-class FileProcessor:
+class FileService:
     """文件处理器，支持异步文件操作和VDF解析"""
 
     def __init__(self):
         self.manifests: List[str] = []
         self.depots: Dict[int, Optional[str]] = {}  # {depot_id: decryption_key}
 
-    async def parse_appinfo_vdf(self, content: bytes) -> Optional[str]:
+    async def parse_app_info(self, content: bytes) -> Optional[str]:
         """异步解析 appinfo.vdf 文件
 
         Args:
@@ -40,7 +40,7 @@ class FileProcessor:
             logger.error(f"⛔ 解析 appinfo.vdf 失败: {str(e)}")
             return None
 
-    async def parse_key_vdf(self, content: bytes) -> bool:
+    async def parse_depot_key(self, content: bytes) -> bool:
         """异步解析 key.vdf 文件
 
         Args:
