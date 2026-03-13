@@ -3,7 +3,7 @@
 from typing import Final, List, Dict
 
 # 版本信息
-VERSION: Final[str] = "4.0.0"
+VERSION: Final[str] = "4.0.1"
 
 # 网络配置 - 异步优化
 DNS_SERVERS: Final[List[str]] = ["223.5.5.5"]

@@ -2,7 +2,7 @@ name: 🧪 CI Build
 
 on:
   push:
-    paths: [ "*.py", "requirements.txt" ]
+    paths: [ "**/*.py", "requirements.txt" ]
     branches: [ "main" ]
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
 
       - name: 🔨 Build app
         run: |
-          pyinstaller -F -i main.ico main.py
+          pyinstaller -F -i resources/main.ico main.py
 
       - name: 📤 Upload artifact
         uses: actions/upload-artifact@v7
