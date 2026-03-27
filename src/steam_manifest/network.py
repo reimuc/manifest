@@ -1,7 +1,7 @@
 """异步API客户端模块 - 高性能网络请求处理"""
 
 import asyncio
-from typing import Any, Dict, Optional, List
+from typing import Any, Optional
 
 import aiohttp
 import orjson
@@ -16,20 +16,21 @@ from tenacity import (
     wait_exponential,
 )
 
-from src.core.constants import (
+from .constants import (
     ASYNC_TIMEOUT,
     CACHE_MAX_SIZE,
     CACHE_TTL,
     CONNECTOR_LIMIT,
     CONNECTOR_LIMIT_PER_HOST,
+    DNS_SERVERS,
     HTTP_HEADERS,
-    RETRY_TIMES,
+    MAX_WORKERS,
     RETRY_INTERVAL,
-    MAX_WORKERS, DNS_SERVERS
+    RETRY_TIMES,
 )
 
 
-class APIClient:
+class HttpClient:
     """异步API客户端，支持连接池、缓存和智能重试"""
 
     def __init__(self):
@@ -79,11 +80,11 @@ class APIClient:
         )
 
     async def request(
-            self,
-            method: str,
-            url: str,
-            **kwargs,
-    ) -> Optional[Dict[str, Any]]:
+        self,
+        method: str,
+        url: str,
+        **kwargs,
+    ) -> Optional[dict[str, Any]]:
         """发送HTTP请求，支持缓存和重试
 
         Args:
@@ -105,15 +106,22 @@ class APIClient:
         if not self.session:
             await self.initialize()
 
+        # mypy can't infer that self.session is not None after initialize(), so
+        # make a local copy and guard it for typing.
+        session = self.session
+        if session is None:
+            logger.error("❌ HTTP session is not initialized")
+            return None
+
         try:
             async for attempt in AsyncRetrying(
-                    retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)),
-                    stop=stop_after_attempt(RETRY_TIMES),
-                    wait=wait_exponential(multiplier=RETRY_INTERVAL, min=1, max=10),
-                    reraise=True,
+                retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)),
+                stop=stop_after_attempt(RETRY_TIMES),
+                wait=wait_exponential(multiplier=RETRY_INTERVAL, min=1, max=10),
+                reraise=True,
             ):
                 with attempt:
-                    async with self.session.request(method, url, **kwargs) as response:
+                    async with session.request(method, url, **kwargs) as response:
                         if response.status == 200:
                             data = await response.json(loads=orjson.loads)
 
@@ -127,19 +135,19 @@ class APIClient:
                             logger.warning(f"⏱️ API速率限制，重置时间: {reset_time}")
                             raise aiohttp.ClientError("Rate limited")
                         else:
-                            logger.warning(
-                                f"❗ 请求失败 [{response.status}]: {url}"
-                            )
+                            logger.warning(f"❗ 请求失败 [{response.status}]: {url}")
                             raise aiohttp.ClientError(f"HTTP {response.status}")
 
-        except RetryError as e:
+        except RetryError:
             logger.error(f"❌ 请求失败（已重试{RETRY_TIMES}次）: {url}")
             return None
         except Exception as e:
             logger.error(f"❌ 请求异常: {str(e)}")
             return None
+        # explicit fall-through return for mypy
+        return None
 
-    async def get(self, url: str, **kwargs) -> Optional[Dict[str, Any]]:
+    async def get(self, url: str, **kwargs) -> Optional[dict[str, Any]]:
         """发送GET请求"""
         return await self.request("GET", url, **kwargs)
 
@@ -150,15 +158,20 @@ class APIClient:
         if not self.session:
             await self.initialize()
 
+        session = self.session
+        if session is None:
+            logger.error("❌ HTTP session is not initialized")
+            return None
+
         try:
             async for attempt in AsyncRetrying(
-                    retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)),
-                    stop=stop_after_attempt(RETRY_TIMES),
-                    wait=wait_exponential(multiplier=RETRY_INTERVAL, min=1, max=10),
-                    reraise=True,
+                retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)),
+                stop=stop_after_attempt(RETRY_TIMES),
+                wait=wait_exponential(multiplier=RETRY_INTERVAL, min=1, max=10),
+                reraise=True,
             ):
                 with attempt:
-                    async with self.session.get(url) as response:
+                    async with session.get(url) as response:
                         if response.status == 200:
                             return await response.read()
                         else:
@@ -170,9 +183,12 @@ class APIClient:
         except Exception as e:
             logger.error(f"❌ 下载异常: {str(e)}")
             return None
+        # explicit fall-through return for mypy
+        return None
 
-    async def batch_get(self, urls: List[str], semaphore: Optional[asyncio.Semaphore] = None) -> Dict[
-        str, Optional[Dict]]:
+    async def batch_get(
+        self, urls: list[str], semaphore: Optional[asyncio.Semaphore] = None
+    ) -> dict[str, Optional[dict]]:
         """批量GET请求，支持并发控制
 
         Args:
@@ -190,6 +206,7 @@ class APIClient:
                 return url, await self.get(url)
 
         tasks = [fetch_with_semaphore(url) for url in urls]
+        # return_exceptions=False means it will raise if any fail, but our get() handles exceptions and returns None
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
         return {url: response for url, response in results}

@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "steam-manifest"
+version = "4.0.2"
+description = "Steam manifest parser and downloader"
+readme = "README.md"
+authors = [
+    { name = "reimuc", email = "160387885+reimuc@users.noreply.github.com" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "aiofiles",
+    "aiohttp[speedups]",
+    "cachetools",
+    "vdf",
+    "loguru",
+    "rich",
+    "orjson",
+    "tenacity",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+    "types-aiofiles",
+    "types-cachetools"
+]
+
+[project.scripts]
+steam-manifest = "steam_manifest.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "scripts"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --cov=src/steam_manifest"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+files = ["src", "scripts"]

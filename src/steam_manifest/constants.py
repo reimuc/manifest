@@ -1,12 +1,12 @@
 """常量配置模块"""
 
-from typing import Final, List, Dict
+from typing import Final
 
 # 版本信息
 VERSION: Final[str] = "4.0.1"
 
 # 网络配置 - 异步优化
-DNS_SERVERS: Final[List[str]] = ["223.5.5.5"]
+DNS_SERVERS: Final[list[str]] = ["223.5.5.5"]
 TIMEOUT: Final[int] = 30
 RETRY_TIMES: Final[int] = 5  # 减少重试次数，使用指数退避
 RETRY_INTERVAL: Final[float] = 1.0  # 基础重试间隔（秒）
@@ -56,15 +56,13 @@ class Urls:
 
 
 # HTTP请求头
-HTTP_HEADERS: Final[Dict[str, str]] = {
+HTTP_HEADERS: Final[dict[str, str]] = {
     "Accept": "application/json",
-    "User-Agent": f"GitHubManifest/{VERSION}",
+    "User-Agent": f"steam-manifest-cli/{VERSION}",
 }
 
 # 仓库配置
-DEFAULT_REPOS: Final[List[str]] = [
-    "SteamAutoCracks/ManifestHub"
-]
+DEFAULT_REPOS: Final[list[str]] = ["SteamAutoCracks/ManifestHub"]
 
 
 class Files:

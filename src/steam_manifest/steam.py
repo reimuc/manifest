@@ -1,23 +1,23 @@
 """Steam应用信息管理模块"""
 
-from typing import List, Optional, Dict
+from typing import Optional
 
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
 
-from src.core.api_client import APIClient
-from src.core.constants import Urls
+from .constants import Urls
+from .network import HttpClient
 
 
-class SteamService:
+class SteamApp:
     """Steam应用信息管理器"""
 
-    def __init__(self, api_client: APIClient):
+    def __init__(self, api_client: HttpClient):
         self.api_client = api_client
         self.app_id: str = ""
         self.app_name: Optional[str] = None
-        self.dlc_ids: List[int] = []
+        self.dlc_ids: list[int] = []
 
     async def search_app(self, query: str) -> Optional[int]:
         """搜索Steam应用
@@ -64,7 +64,7 @@ class SteamService:
 
             for idx, item in enumerate(items[:10], 1):  # 最多显示10个
                 item_type = item.get("type", "unknown")
-                table.add_row(str(idx), str(item['id']), item['name'], item_type)
+                table.add_row(str(idx), str(item["id"]), item["name"], item_type)
 
             console.print(table)
 
@@ -125,7 +125,7 @@ class SteamService:
             logger.error(f"❌ 获取应用详情失败: {str(e)}")
             return False
 
-    async def batch_fetch_dlc_details(self, dlc_ids: List[int]) -> Dict[int, str]:
+    async def batch_fetch_dlc_details(self, dlc_ids: list[int]) -> dict[int, str]:
         """批量获取DLC详情
 
         Args:

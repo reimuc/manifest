@@ -1,28 +1,31 @@
 """Steam清单获取工具 - 高性能异步版本"""
 
+import asyncio
 import sys
 import winreg
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from time import sleep
+from typing import Optional
 
 from loguru import logger
 from rich.console import Console
 from rich.text import Text
 
-from src.core.api_client import APIClient
-from src.core.constants import Steam, VERSION
-from src.services.file_service import FileService
-from src.services.github_service import GitHubService
-from src.services.steam_service import SteamService
+from .constants import VERSION, Steam
+from .github import GitHubRepo
+from .network import HttpClient
+from .steam import SteamApp
+from .storage import ManifestStorage
 
 
-def show_banner():
+def show_banner() -> None:
     """显示应用欢迎banner"""
     console = Console()
 
     banner_text = Text()
-    banner_text.append(r"""
+    banner_text.append(
+        r"""
      ('-. .-.   ('-.  _  .-')   .-') _      ('-.
     ( OO )  / _(  OO)( \( -O ) (  OO) )    ( OO ).-.
     ,--. ,--.(,------.,------. /     '._   / . --. /
@@ -32,15 +35,17 @@ def show_banner():
     |  .-.  | |  `---.|  .  '.'   |  |     |  .-.  |
     |  | |  | |  `---.|  |\  \    |  |     |  | |  |
     `--' `--' `------'`--' '--'   `--'     `--' `--'
-    """, style="bold magenta")
+    """,
+        style="bold magenta",
+    )
 
     content = Text.assemble(
         banner_text,
         "\n",
         (rf"🚀 Steam manifest v{VERSION}", "bold cyan"),
         "\n",
-        (rf"💨 Powered by Python & AsyncIO", "dim white"),
-        "\n"
+        (r"💨 Powered by Python & AsyncIO", "dim white"),
+        "\n",
     )
 
     console.print(content)
@@ -51,11 +56,7 @@ def init_logger(debug: bool = False):
     logger.remove()
 
     # 终端日志格式
-    log_format = (
-        "<green>{time:HH:mm:ss}</green> | "
-        "<level>{level: <8}</level> | "
-        "<level>{message}</level>"
-    )
+    log_format = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
 
     if debug:
         logger.add(sys.stderr, format=log_format, level="DEBUG")
@@ -77,9 +78,15 @@ def init_command_args() -> Namespace:
     return parser.parse_args()
 
 
-def verify_steam_path() -> Path | None:
+def verify_steam_path() -> Optional[Path]:
     """验证Steam安装路径"""
     try:
+        if sys.platform != "win32":
+            # For non-Windows platforms, checking registry won't work.
+            # You might want to add logic for Linux/macOS or just skip auto-detection.
+            # For now, return None or a default path if known.
+            return None
+
         hkey = winreg.OpenKey(winreg.HKEY_CURRENT_USER, Steam.REG_PATH)
         steam_path = Path(winreg.QueryValueEx(hkey, Steam.REG_KEY)[0])
 
@@ -87,11 +94,12 @@ def verify_steam_path() -> Path | None:
             return steam_path
 
         return None
-    except (FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError, NameError):
+        # NameError handles if winreg is not imported on non-Windows
         return None
 
 
-async def main():
+async def async_main():
     """主程序入口"""
     show_banner()
 
@@ -108,12 +116,12 @@ async def main():
     logger.info(f"🎮 已定位Steam安装路径: {steam_path}")
 
     # 创建异步客户端和管理器
-    async with APIClient() as api_client:
+    async with HttpClient() as api_client:
         try:
             # 初始化各个管理器
-            file_processor = FileService()
-            steam_service = SteamService(api_client)
-            repo_manager = GitHubService(api_client, file_processor)
+            storage = ManifestStorage()
+            steam_app = SteamApp(api_client)
+            github_repo = GitHubRepo(api_client, storage)
 
             # 获取应用ID
             if args.appid:
@@ -123,11 +131,11 @@ async def main():
                 app_query = Console().input("[cyan]请输入游戏名称或ID: [/cyan]")
 
             # 检查API速率限制 (移到用户输入之后，避免网络卡顿影响交互)
-            if not await repo_manager.check_rate_limit():
+            if not await github_repo.check_rate_limit():
                 logger.error("❌ API请求次数已达上限，请稍后再试")
                 return
 
-            app_id = await steam_service.search_app(app_query)
+            app_id = await steam_app.search_app(app_query)
 
             if not app_id:
                 logger.error("❌ 无法获取应用ID")
@@ -139,68 +147,64 @@ async def main():
             custom_repos = [args.repo] if args.repo else None
 
             # 查找仓库
-            repo = await repo_manager.find_repository(app_id_str, custom_repos)
+            repo = await github_repo.find_repository(app_id_str, custom_repos)
 
             if not repo:
                 logger.error(f"❌ 未找到包含应用 {app_id_str} 的仓库")
                 return
 
             # 获取应用详情
-            await steam_service.fetch_app_details(app_id_str)
+            await steam_app.fetch_app_details(app_id_str)
 
             # 获取文件列表
-            files = await repo_manager.fetch_repository_files(repo, app_id_str)
+            files = await github_repo.fetch_repository_files(repo, app_id_str)
             if not files:
                 logger.error("❌ 无法获取仓库文件")
                 return
 
             # 并发处理所有文件
             logger.info("⏳ 正在处理仓库文件...")
-            success = await repo_manager.process_files(
-                repo, app_id_str, files, steam_path
-            )
+            success = await github_repo.process_files(repo, app_id_str, files, steam_path)
 
             if not success:
                 logger.warning("❗ 部分文件处理失败")
 
             # 保存配置
-            save_success = await file_processor.save_lua_config(
+            save_success = await storage.save_lua_config(
                 app_id_str,
-                steam_service.app_name,
+                steam_app.app_name,
                 steam_path,
                 args.fixed,
             )
 
             if save_success:
-                logger.info(f"✅ 操作完成！应用: {steam_service.app_name or app_id_str}")
+                logger.info(f"✅ 操作完成！应用: {steam_app.app_name or app_id_str}")
             else:
                 logger.error("❌ 保存配置失败")
 
             # 处理DLC
-            if steam_service.dlc_ids:
-                logger.info(f"🎯 检测到 {len(steam_service.dlc_ids)} 个DLC，正在处理...")
+            if steam_app.dlc_ids:
+                logger.info(f"🎯 检测到 {len(steam_app.dlc_ids)} 个DLC，正在处理...")
 
                 # 为DLC复用资源
-                dlc_processor = FileService()
-                dlc_repo_manager = GitHubService(api_client, dlc_processor)
+                dlc_storage = ManifestStorage()
+                dlc_repo_mgr = GitHubRepo(api_client, dlc_storage)
 
-                for dlc_id in steam_service.dlc_ids:
+                for dlc_id in steam_app.dlc_ids:
                     dlc_id_str = str(dlc_id)
-                    dlc_repo = await dlc_repo_manager.find_repository(dlc_id_str, custom_repos)
+                    dlc_repo = await dlc_repo_mgr.find_repository(dlc_id_str, custom_repos)
 
                     if dlc_repo:
-                        dlc_files = await dlc_repo_manager.fetch_repository_files(dlc_repo, dlc_id_str)
+                        dlc_files = await dlc_repo_mgr.fetch_repository_files(dlc_repo, dlc_id_str)
                         if dlc_files:
                             # 清理之前的状态
-                            dlc_processor.clear()
+                            dlc_storage.clear()
 
                             # 处理DLC文件（下载清单等）
-                            await dlc_repo_manager.process_files(
-                                dlc_repo, dlc_id_str, dlc_files, steam_path
-                            )
+                            await dlc_repo_mgr.process_files(dlc_repo, dlc_id_str, dlc_files, steam_path)
 
                             # 保存DLC配置
-                            await dlc_processor.save_lua_config(
+                            await dlc_storage.save_lua_config(
                                 dlc_id_str,
                                 None,
                                 steam_path,
@@ -225,3 +229,19 @@ async def main():
             Console().input("\n[dim]按回车键退出...[/dim]")
         except Exception:
             pass
+
+
+def main():
+    """Entry point for the application script"""
+    try:
+        if sys.platform == "win32":
+            # Windows specific event loop policy for subprocesses if needed
+            # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+            pass
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

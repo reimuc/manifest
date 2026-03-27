@@ -3,24 +3,24 @@
 import asyncio
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Optional
 
 from loguru import logger
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 
-from src.core.api_client import APIClient
-from src.core.constants import DEFAULT_REPOS, Files, Urls
-from src.services.file_service import FileService
+from .constants import DEFAULT_REPOS, Files, Urls
+from .network import HttpClient
+from .storage import ManifestStorage
 
 
-class GitHubService:
+class GitHubRepo:
     """GitHub仓库管理器"""
 
-    def __init__(self, api_client: APIClient, file_processor: FileService):
+    def __init__(self, api_client: HttpClient, storage: ManifestStorage):
         self.api_client = api_client
-        self.file_processor = file_processor
+        self.storage = storage  # renamed from file_processor for clarity, or keep? 'storage' is better.
         self.current_repo: Optional[str] = None
-        self.rate_limit_info = {}
+        self.rate_limit_info: dict[str, Any] = {}
 
     async def check_rate_limit(self) -> bool:
         """检查GitHub API速率限制
@@ -48,9 +48,7 @@ class GitHubService:
             logger.info(f"📊 GitHub API - 剩余请求: {remaining}")
 
             if remaining == 0:
-                logger.error(
-                    f"❌ API请求已达上限，重置时间: {self.rate_limit_info['reset_time']}"
-                )
+                logger.error(f"❌ API请求已达上限，重置时间: {self.rate_limit_info['reset_time']}")
                 return False
 
             return True
@@ -59,7 +57,7 @@ class GitHubService:
             logger.error(f"❗ 检查速率限制异常: {str(e)}")
             return True
 
-    async def find_repository(self, app_id: str, custom_repos: Optional[List[str]] = None) -> Optional[str]:
+    async def find_repository(self, app_id: str, custom_repos: Optional[list[str]] = None) -> Optional[str]:
         """查找包含指定应用的仓库（选择最新的版本）
 
         Args:
@@ -77,8 +75,15 @@ class GitHubService:
         tasks = [self._check_repo_branch(repo, app_id) for repo in repos]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for repo, (has_branch, date) in zip(repos, results):
-            if isinstance(has_branch, Exception):
+        for repo, res in zip(repos, results):
+            # results may contain exceptions when return_exceptions=True
+            if isinstance(res, Exception):
+                continue
+
+            # mypy can't narrow the type from the gather result; assume proper tuple
+            try:
+                has_branch, date = res  # type: ignore[misc]
+            except Exception:
                 continue
 
             if has_branch and date:
@@ -94,7 +99,7 @@ class GitHubService:
             logger.error(f"❌ 未在仓库中找到应用: {app_id}")
             return None
 
-    async def _check_repo_branch(self, repo: str, branch: str) -> Tuple[bool, Optional[str]]:
+    async def _check_repo_branch(self, repo: str, branch: str) -> tuple[bool, Optional[str]]:
         """检查仓库中是否存在分支并获取提交时间
 
         Returns:
@@ -116,9 +121,7 @@ class GitHubService:
             logger.debug(f"❗ 检查仓库 {repo} 异常: {str(e)}")
             return False, None
 
-    async def fetch_repository_files(
-            self, repo: str, branch: str
-    ) -> Optional[List[dict]]:
+    async def fetch_repository_files(self, repo: str, branch: str) -> Optional[list[dict]]:
         """获取仓库分支的文件列表
 
         Args:
@@ -154,12 +157,12 @@ class GitHubService:
             return None
 
     async def process_files(
-            self,
-            repo: str,
-            branch: str,
-            files: List[dict],
-            steam_path: Path,
-            semaphore: Optional[asyncio.Semaphore] = None,
+        self,
+        repo: str,
+        branch: str,
+        files: list[dict],
+        steam_path: Path,
+        semaphore: Optional[asyncio.Semaphore] = None,
     ) -> bool:
         """并发处理文件列表
 
@@ -174,26 +177,26 @@ class GitHubService:
             是否全部成功处理
         """
         if semaphore is None:
-            # from src.core.config import MAX_WORKERS # Avoid circular import if possible, but constant is fine
-            from src.core.constants import MAX_WORKERS
-            semaphore = asyncio.Semaphore(MAX_WORKERS)
+            from .constants import MAX_WORKERS
+
+            sem = asyncio.Semaphore(MAX_WORKERS)
+        else:
+            sem = semaphore
 
         total_files = len(files)
 
         with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeRemainingColumn(),
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
         ) as progress:
             task = progress.add_task("[cyan]处理文件中...", total=total_files)
 
             async def process_file(file_info):
-                async with semaphore:
-                    result = await self._process_single_file(
-                        repo, branch, file_info, steam_path
-                    )
+                async with sem:
+                    result = await self._process_single_file(repo, branch, file_info, steam_path)
                     progress.advance(task)
                     return result
 
@@ -207,9 +210,7 @@ class GitHubService:
 
         return failures == 0
 
-    async def _process_single_file(
-            self, repo: str, branch: str, file_info: dict, steam_path: Path
-    ) -> bool:
+    async def _process_single_file(self, repo: str, branch: str, file_info: dict, steam_path: Path) -> bool:
         """处理单个文件
 
         Returns:
@@ -243,7 +244,7 @@ class GitHubService:
             content = await self.api_client.raw_get(url)
 
             if content:
-                success = await self.file_processor.save_manifest_file(path, steam_path, content)
+                success = await self.storage.save_manifest_file(path, steam_path, content)
                 return success
             return False
         except Exception as e:
@@ -260,10 +261,10 @@ class GitHubService:
                 return False
 
             if path == Files.APPINFO_VDF:
-                app_name = await self.file_processor.parse_app_info(content)
+                app_name = await self.storage.parse_app_info(content)
                 return app_name is not None
             elif path == Files.KEY_VDF:
-                return await self.file_processor.parse_depot_key(content)
+                return await self.storage.parse_depot_key(content)
 
             return True
         except Exception as e:
@@ -277,7 +278,7 @@ class GitHubService:
             config_data = await self.api_client.get(url)
 
             if config_data:
-                dlcs, package_dlcs = await self.file_processor.parse_config_json(config_data)
+                dlcs, package_dlcs = await self.storage.parse_config_json(config_data)
                 return True
             return False
         except Exception as e:

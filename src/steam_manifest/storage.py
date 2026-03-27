@@ -2,21 +2,21 @@
 
 import asyncio
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import aiofiles
 import vdf
 from loguru import logger
 
-from src.core.constants import Steam
+from .constants import Steam
 
 
-class FileService:
+class ManifestStorage:
     """文件处理器，支持异步文件操作和VDF解析"""
 
     def __init__(self):
-        self.manifests: List[str] = []
-        self.depots: Dict[int, Optional[str]] = {}  # {depot_id: decryption_key}
+        self.manifests: list[str] = []
+        self.depots: dict[int, Optional[str]] = {}  # {depot_id: decryption_key}
 
     async def parse_app_info(self, content: bytes) -> Optional[str]:
         """异步解析 appinfo.vdf 文件
@@ -30,9 +30,7 @@ class FileService:
         try:
             # 在线程池中运行VDF解析以避免阻塞
             loop = asyncio.get_event_loop()
-            appinfo_config = await loop.run_in_executor(
-                None, vdf.loads, content.decode()
-            )
+            appinfo_config = await loop.run_in_executor(None, vdf.loads, content.decode())
             appname = appinfo_config.get("common", {}).get("name", "Unknown")
             logger.info(f"📦 应用名称: {appname}")
             return appname
@@ -51,10 +49,8 @@ class FileService:
         """
         try:
             loop = asyncio.get_event_loop()
-            depot_config = await loop.run_in_executor(
-                None, vdf.loads, content.decode()
-            )
-            depot_dict: Dict = depot_config.get("depots", {})
+            depot_config = await loop.run_in_executor(None, vdf.loads, content.decode())
+            depot_dict: dict = depot_config.get("depots", {})
 
             for depot_id_str, depot_info in depot_dict.items():
                 try:
@@ -71,7 +67,7 @@ class FileService:
             logger.error(f"⛔ 解析 key.vdf 失败: {str(e)}")
             return False
 
-    async def parse_config_json(self, config_data: Dict[str, Any]) -> Tuple[List[int], List[int]]:
+    async def parse_config_json(self, config_data: dict[str, Any]) -> tuple[list[int], list[int]]:
         """解析配置JSON文件
 
         Args:
@@ -81,8 +77,8 @@ class FileService:
             (dlc_ids, package_dlc_ids) 元组
         """
         try:
-            dlcs: List[int] = config_data.get("dlcs", [])
-            packagedlcs: List[int] = config_data.get("packagedlcs", [])
+            dlcs: list[int] = config_data.get("dlcs", [])
+            packagedlcs: list[int] = config_data.get("packagedlcs", [])
 
             if dlcs:
                 logger.info(f"🎮 检测到 {len(dlcs)} 个DLC")
@@ -121,8 +117,8 @@ class FileService:
             save_path.parent.mkdir(parents=True, exist_ok=True)
 
             # 异步写入到临时文件
-            temp_path = save_path.with_suffix('.tmp')
-            async with aiofiles.open(temp_path, 'wb') as f:
+            temp_path = save_path.with_suffix(".tmp")
+            async with aiofiles.open(temp_path, "wb") as f:
                 await f.write(content)
 
             # 原子替换
@@ -136,11 +132,11 @@ class FileService:
             return False
 
     async def save_lua_config(
-            self,
-            app_id: str,
-            app_name: Optional[str],
-            steam_path: Path,
-            use_fixed_manifest: bool = False,
+        self,
+        app_id: str,
+        app_name: Optional[str],
+        steam_path: Path,
+        use_fixed_manifest: bool = False,
     ) -> bool:
         """异步保存Lua配置文件
 
@@ -181,8 +177,8 @@ class FileService:
             lua_path.mkdir(parents=True, exist_ok=True)
             lua_filepath = lua_path / lua_filename
 
-            temp_filepath = lua_filepath.with_suffix('.tmp')
-            async with aiofiles.open(temp_filepath, 'w', encoding='utf-8') as f:
+            temp_filepath = lua_filepath.with_suffix(".tmp")
+            async with aiofiles.open(temp_filepath, "w", encoding="utf-8") as f:
                 await f.write(lua_content)
 
             temp_filepath.replace(lua_filepath)
@@ -193,7 +189,7 @@ class FileService:
             logger.error(f"❌ 保存Lua配置失败: {str(e)}")
             return False
 
-    def _parse_manifest_ids(self) -> Dict[int, str]:
+    def _parse_manifest_ids(self) -> dict[int, str]:
         """从清单路径列表解析depot_id -> manifest_id映射
 
         例: "123456_abcdef123456.manifest" -> {123456: "abcdef123456"}
@@ -217,7 +213,7 @@ class FileService:
         elif decryption_key and not self.depots[depot_id]:
             self.depots[depot_id] = decryption_key
 
-    def get_depot_list(self) -> List[Tuple[int, Optional[str]]]:
+    def get_depot_list(self) -> list[tuple[int, Optional[str]]]:
         """获取排序后的depot列表"""
         return sorted(self.depots.items(), key=lambda x: x[0])
 

@@ -1,9 +1,9 @@
-name: 🧪 CI Build
+name: 📦 CI Build
 
 on:
   push:
-    paths: [ "**/*.py", "requirements.txt" ]
     branches: [ "main" ]
+    paths: [ "**/*.py", "pyproject.toml" ]
 
 jobs:
   build:
@@ -26,12 +26,16 @@ jobs:
       - name: 💾 Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
+          pip install build pyinstaller
+          pip install -e .
+
+      - name: 🔨 Build Wheel and Sdist
+        run: python -m build
 
       - name: 🔨 Build app
         run: |
-          pyinstaller -F -i resources/main.ico main.py
+          python -c "print('from steam_manifest.cli import main; main()', file=open('build_entry.py', 'w'))"
+          pyinstaller --onefile --name steam-manifest --collect-all steam-manifest --icon "resources/main.ico" build_entry.py
 
       - name: 📤 Upload artifact
         uses: actions/upload-artifact@v7
