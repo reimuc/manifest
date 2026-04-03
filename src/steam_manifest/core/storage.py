@@ -8,7 +8,7 @@ import aiofiles
 import vdf
 from loguru import logger
 
-from .constants import Steam
+from steam_manifest.core.constants import Steam
 
 
 class ManifestStorage:

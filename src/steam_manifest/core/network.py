@@ -16,7 +16,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from .constants import (
+from steam_manifest.core.constants import (
     ASYNC_TIMEOUT,
     CACHE_MAX_SIZE,
     CACHE_TTL,
@@ -200,7 +200,7 @@ class HttpClient:
 
     async def batch_get(
         self, urls: list[str], semaphore: asyncio.Semaphore | None = None
-    ) -> dict[str, Any]:
+    ) -> dict[Any, Any] | dict[str, Any] | dict[str, str] | dict[bytes, bytes]:
         """批量GET请求，支持并发控制
 
         Args:

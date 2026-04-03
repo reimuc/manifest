@@ -92,10 +92,7 @@ def verify_steam_path() -> Path | None:
             return None
 
         # Import winreg lazily to avoid import-time failures on non-Windows CI runners
-        try:
-            import winreg  # type: ignore
-        except Exception:
-            return None
+        import winreg
 
         hkey = winreg.OpenKey(winreg.HKEY_CURRENT_USER, Steam.REG_PATH)
         steam_path = Path(winreg.QueryValueEx(hkey, Steam.REG_KEY)[0])
