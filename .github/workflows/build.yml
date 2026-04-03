@@ -1,0 +1,44 @@
+name: 📦 CI Build
+
+on:
+  push:
+    branches: [ "main" ]
+    paths: [ "**/*.py", "pyproject.toml" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ "windows-latest" ]
+        python: [ "3.12", "3.13" ]
+
+    steps:
+      - name: 🔍 Checkout
+        uses: actions/checkout@v6
+
+      - name: 🔧 Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: "pip"
+
+      - name: 💾 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build pyinstaller
+          pip install -e ".[dev]"
+
+      - name: 🔨 Build Wheel and Sdist
+        run: python -m build
+
+      - name: 🔨 Build app
+        run: |
+          python -c "print('from steam_manifest.cli import main; main()', file=open('build_entry.py', 'w'))"
+          pyinstaller --onefile --name steam-manifest --collect-all steam_manifest --icon "src/steam_manifest/assets/main.ico" build_entry.py
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.os }}_cp${{ matrix.python }}
+          path: dist/*
